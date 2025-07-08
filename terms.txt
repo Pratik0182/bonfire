@@ -1,0 +1,18 @@
+basic copy paste:
+################### (Text) ###################
+
+
+DS terminologies:
+Going more hollow - typo/ runtime
+Bonfire not found - syntax error (expected int or float)
+
+
+
+Parser:
+Expr : Term((plus, minus) Term)
+
+Term : Factor((mul, div) Factor)
+
+Factor : int, float
+		 (Plus, minus) factor
+		 ( lparen exp rparen)
