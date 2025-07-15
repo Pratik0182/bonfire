@@ -5,6 +5,7 @@ basic copy paste:
 DS terminologies:
 Going more hollow - typo/ runtime
 Bonfire not found - syntax error (expected int or float)
+Bonfire Exhausted - runtime error
 
 
 

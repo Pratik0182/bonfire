@@ -3,9 +3,6 @@ from string_with_arrows import *
 
 ################### Constants
 DIGITS = set([str(i) for i in range(10)]) #123456789
-'''
-fast search instead of normal string search, reducing time...
-'''
 
 ################### Error Handling ###################
 class Error:
@@ -16,24 +13,28 @@ class Error:
 		self.details = details
 	
 	def res(self):
-		result = f'{self.error_type} {self.details}\n'
-		result += f'File {self.error_start}, line {self.error_start.ln + 1}'
-		result += '\n\n' + string_with_arrows(self.error_start.ftxt, self.error_start, self.error_end)
+		result = f'File {self.error_start}, line {self.error_start.ln + 1}\n'
+		result += string_with_arrows(self.error_start.ftxt, self.error_start, self.error_end) + '\n'
+		result += f'{self.error_type} {self.details}\n'
 		return result
 
 class IllegalCharError(Error):
 	def __init__(self, error_start, error_end, details):
-		super().__init__(error_start, error_end, 'Going more Hollow', details)
+		super().__init__(error_start, error_end, 'Going more Hollow: ', details)
 		'''
-		might change this later coz this kinda doesnt make any sense to me
-		like wtf is going more  hollow related
+		might change this later
+
 		'''
 class InvalidSyntaxError(Error):
 	def __init__(self, error_start, error_end, details):
-		super().__init__(error_start, error_end, 'Bonfire not found-', details)
+		super().__init__(error_start, error_end, 'Bonfire not found: ', details)
 		'''
-		kinda makes senses, syntax error so cant travel to other bonfires
+		sochunga
+
 		'''
+class RunTimeError(Error):
+	def __init__(self, error_start, error_end, details):
+		super().__init__(error_start, error_end, 'Bonfire Exhausted: ', details)
 
 ################### Position ###################
 class Position:
@@ -128,7 +129,7 @@ class Lexer:
 				pos_start = self.pos.copy()
 				curr = self.cchar
 				self.advance()
-				return [], IllegalCharError(pos_start, self.pos, "|" + curr + "|")
+				return [], IllegalCharError(pos_start, self.pos, curr)
 			'''
 			self.advance()
 			'''
@@ -263,6 +264,26 @@ class Parser:
 				return res
 			left = BinOpNode(left, op_tok, right)
 		return res.success(left) 
+################### RUNTIME RESULT ###################
+class RunTimeResult:
+	def __init__(self):
+		self.value = None
+		self.error = None
+
+	def register(self, res):
+		if isinstance(res, RunTimeResult):
+			if res.error:
+				self.error = res.error
+			return res.value
+		return res
+
+	def success(self, value):
+		self.value = value
+		return self
+
+	def failure(self, error):
+		self.error = error
+		return self
 
 ################### VALUES ###################
 class Value:
@@ -277,18 +298,20 @@ class Value:
 	
 	def added_to(self, other):
 		if isinstance(other, Value):
-			return Number(self.value + other.value)
+			return Number(self.value + other.value), None
 	
 	def subted_by(self, other):
 		if isinstance(other, Value):
-			return Number(self.value - other.value)
+			return Number(self.value - other.value), None
 
 	def mul_by(self, other):
 		if isinstance(other, Value):
-			return Number(self.value * other.value)
+			return Number(self.value * other.value), None
 	def div_by(self, other):
 		if isinstance(other, Value):
-			return Number(self.value / other.value)
+			if other.value == 0:
+				return None, RunTimeError(other.pos_start, other.pos_end, "Division by zero")
+			return Number(self.value / other.value), None
 	
 	def __repr__(self):
 		return str(self.value)
@@ -305,26 +328,40 @@ class Interpreter:
 		raise Exception(f'No visit_{type(node).__name__} method defined ')
 	
 	def visit_NumberNode(self, node):
-		return Number(node.tok.value).set_pos(node.tok.pos_start, node.tok.pos_end)
+		
+		return RunTimeResult().success(Number(node.tok.value).set_pos(node.tok.pos_start, node.tok.pos_end))
 
 	def visit_BinOpNode(self, node):
-		left = self.visit(node.l_node)
-		right = self.visit(node.r_node)
+		res = RunTimeResult()
+		left = res.register(self.visit(node.l_node))
+		right = res.register(self.visit(node.r_node))
+		if res.error:
+			return res
 		if node.op_tok.type == T_ADD:
-			result = left.added_to(right)
+			result, error = left.added_to(right)
 		elif node.op_tok.type == T_SUB:
-			result = left.subted_by(right)
+			result, error = left.subted_by(right)
 		elif node.op_tok.type == T_MUL:
-			result = left.mul_by(right)
+			result, error = left.mul_by(right)
 		elif node.op_tok.type == T_DIV:
-			result = left.div_by(right)
-		return result.set_pos(node.pos_start, node.pos_end)
+			result, error = left.div_by(right)
+		if error:
+			return res.failure(error)
+		else:
+			return res.success(result.set_pos(node.pos_start, node.pos_end))
 
 	def visit_UnaryOpNode(self, node):
-		number = self.visit(node.node)
+		res = RunTimeResult()
+		number = res.register(self.visit(node.node))
+		if res.error:
+			return res
+		error = None
 		if node.op_tok.type == T_SUB:
-			number = number.mul_by(Number(-1))
-		return number.set_pos(node.pos_start, node.pos_end)
+			number, error = number.mul_by(Number(-1))
+		if error:
+			return res.failure(error)
+		else:
+			return res.success(number.set_pos(node.pos_start, node.pos_end))
 ################### RUN ###################
 def run(fn, text):
 	#generate tokens
@@ -340,5 +377,5 @@ def run(fn, text):
 	#run interpreter
 	interpreter = Interpreter()
 	result = interpreter.visit(ast.node)
-	return result, None
+	return result.value, result.error
 
