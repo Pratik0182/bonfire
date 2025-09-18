@@ -1,10 +1,9 @@
-################### Libs ###################
+################### LIBRARIES ###################
 from string_with_arrows import * 
 
-################### Constants
+################### Constants ################### 
 DIGITS = set([str(i) for i in range(10)]) #123456789
-
-################### Error Handling ###################
+################### ERROR HANDLING ###################
 class Error:
 	def __init__(self, error_start, error_end, error_type, details):
 		self.error_start = error_start
@@ -36,7 +35,7 @@ class RunTimeError(Error):
 	def __init__(self, error_start, error_end, details):
 		super().__init__(error_start, error_end, 'Bonfire Exhausted: ', details)
 
-################### Position ###################
+################### POSITION ###################
 class Position:
 	def __init__(self, idx, ln, col, fn, ftxt):
 		self.idx = idx
@@ -62,7 +61,7 @@ class Position:
 		return Position(self.idx, self.ln, self.col, self.fn, self.ftxt)
 
 
-################### Tokens ###################
+################### TOKENS ###################
 T_INT = 'INT'
 T_FLOAT = 'FLOAT'
 T_ADD = 'ADD'
@@ -103,6 +102,8 @@ class Lexer:
 	def dev_token(self):
 		tokens = []
 		while self.cchar != None:
+		#terminology changes later-
+			#
 			if self.cchar in set([' ', '\t']):
 				self.advance()
 			elif self.cchar in DIGITS:
@@ -151,7 +152,7 @@ class Lexer:
 		return Token(T_FLOAT, float(''.join(N)), pos_start, self.pos) if dot else Token(T_INT, int(''.join(N)), pos_start, self.pos)
 		# 2.004 or 2;;;;  0 and 1 dots
 
-################### Nodes ###################
+################### NODES ###################
 class NumberNode:
 	def __init__(self, tok):
 		self.tok = tok
@@ -180,7 +181,7 @@ class UnaryOpNode:
 	def __repr__(self):
 		return f'({self.op_tok}, {self.node})'
 
-################### Parse Resutl ###################
+################### PARSE RESULT ###################
 class ParseResult:
 	def __init__(self):
 		self.error = None
@@ -200,7 +201,7 @@ class ParseResult:
 	def failure(self, error):
 		self.error = error
 		return self
-################### Parser ###################
+################### PARSER ###################
 class Parser:
 	def __init__(self, tokens):
 		self.tokens = tokens
@@ -290,12 +291,16 @@ class Value:
 	def __init__(self, value):
 		self.value = value
 		self.set_pos()
+		self.set_context()
 	
 	def set_pos(self, pos_start = None, pos_end = None):
 		self.pos_start = pos_start
 		self.pos_end = pos_end
 		return self
 	
+	def set_context(self, context = None):
+		self.context = context
+		return self
 	def added_to(self, other):
 		if isinstance(other, Value):
 			return Number(self.value + other.value), None
@@ -317,24 +322,32 @@ class Value:
 		return str(self.value)
 def Number(value):
 	return Value(value)
+
+################### CONTEXT ###################
+class Context:
+	def __init__(self, display_name, parent = None, parent_entry_pos = None):
+		self.display_name = display_name
+		self.parent = parent
+		self.parent_entry_pos = parent_entry_pos
+
 ################### INTERPRETER ###################
 class Interpreter:
-	def visit(self, node):
+	def visit(self, node, context):
 		method_name = f'visit_{type(node).__name__}'
 		method = getattr(self, method_name, self.no_visit_method)
-		return method(node)
+		return method(node, context)
 	
-	def no_visit_method(self, node):
+	def no_visit_method(self, node, context):
 		raise Exception(f'No visit_{type(node).__name__} method defined ')
 	
-	def visit_NumberNode(self, node):
-		
-		return RunTimeResult().success(Number(node.tok.value).set_pos(node.tok.pos_start, node.tok.pos_end))
+	def visit_NumberNode(self, node, context):
+		#change logic of set_context 
+		return RunTimeResult().success(Number(node.tok.value).set_context(context).set_pos(node.tok.pos_start, node.tok.pos_end))
 
-	def visit_BinOpNode(self, node):
+	def visit_BinOpNode(self, node, context):
 		res = RunTimeResult()
-		left = res.register(self.visit(node.l_node))
-		right = res.register(self.visit(node.r_node))
+		left = res.register(self.visit(node.l_node, context))
+		right = res.register(self.visit(node.r_node, context))
 		if res.error:
 			return res
 		if node.op_tok.type == T_ADD:
@@ -350,9 +363,9 @@ class Interpreter:
 		else:
 			return res.success(result.set_pos(node.pos_start, node.pos_end))
 
-	def visit_UnaryOpNode(self, node):
+	def visit_UnaryOpNode(self, node, context):
 		res = RunTimeResult()
-		number = res.register(self.visit(node.node))
+		number = res.register(self.visit(node.node, context))
 		if res.error:
 			return res
 		error = None
@@ -376,6 +389,7 @@ def run(fn, text):
 		return None, ast.error
 	#run interpreter
 	interpreter = Interpreter()
-	result = interpreter.visit(ast.node)
+	context = Context('<stdin>')
+	result = interpreter.visit(ast.node, context)
 	return result.value, result.error
 
